@@ -51,6 +51,9 @@ public class PlatformHistoryServiceImpl extends ServiceImpl<PlatformHistoryMappe
      */
     @Override
     public PlatformHistory queryPlatformHistoryById(Integer id) {
+        if(id == null||id<=0) {
+            throw new IllegalArgumentException("id cannot be null");
+        }
         return baseMapper.queryPlatformHistoryById(id);
     }
 
@@ -95,6 +98,7 @@ public class PlatformHistoryServiceImpl extends ServiceImpl<PlatformHistoryMappe
         if (platformHistory == null || platformHistory.getId() == null) {
             return Result.failed(ExceptionEnum.CM002);
         }
+
         int updateResult = baseMapper.updatePlatformHistoryById(platformHistory);
         if (updateResult != 1) {
             return Result.failed(ExceptionEnum.CM008);
@@ -117,10 +121,10 @@ public class PlatformHistoryServiceImpl extends ServiceImpl<PlatformHistoryMappe
         if (platformHistory.getRefId() == null) {
             return Result.failed(ExceptionEnum.CM002);
         }
-        if (platformHistory.getName() == null || platformHistory.getName().isEmpty()) {
+        if (platformHistory.getName() == null || platformHistory.getName().trim().isEmpty()) {
             return Result.failed(ExceptionEnum.CM002);
         }
-        if (platformHistory.getVersion() == null || platformHistory.getVersion().isEmpty()) {
+        if (platformHistory.getVersion() == null || platformHistory.getVersion().trim().isEmpty()) {
             return Result.failed(ExceptionEnum.CM002);
         }
         if (platformHistory.getMaterialHistoryId() == null) {
