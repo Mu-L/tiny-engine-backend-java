@@ -74,6 +74,9 @@ public class Utils {
      */
     // 泛型去重方法
     public static <T> List<T> removeDuplicates(List<T> list) {
+        if(list == null) {
+            return new ArrayList<>();
+        }
         // 使用 Set 去重
         Set<T> set = new LinkedHashSet<>(list);
         // 返回去重后的 List
@@ -191,7 +194,7 @@ public class Utils {
      * @return File the File
      * @throws IOException IOException
      */
-    private static File createTempDirectory() throws IOException {
+    static File createTempDirectory() throws IOException {
         return Files.createTempDirectory("unzip").toFile();
     }
 
@@ -202,7 +205,7 @@ public class Utils {
      * @return File the File
      * @throws IOException IOException
      */
-    private static File convertMultipartFileToFile(MultipartFile multipartFile) throws IOException {
+    static File convertMultipartFileToFile(MultipartFile multipartFile) throws IOException {
         File tempFile = File.createTempFile("temp", null);
         tempFile.deleteOnExit();
         try (FileOutputStream fos = new FileOutputStream(tempFile)) {
@@ -219,18 +222,46 @@ public class Utils {
      * @return List<FileInfo> the List<FileInfo>
      * @throws IOException IOException
      */
-    private static List<FileInfo> processZipEntries(ZipInputStream zis, File tempDir) throws IOException {
+    static List<FileInfo> processZipEntries(ZipInputStream zis, File tempDir) throws IOException {
         List<FileInfo> fileInfoList = new ArrayList<>();
         ZipEntry zipEntry;
+        // 将 tempDir 转为规范路径（例如解析符号链接、父目录等）
+        Path safeDir = tempDir.toPath().toRealPath();
+        log.info("Created temporary directory at: {}, real path: {}", tempDir.getAbsolutePath(), safeDir);
 
         while ((zipEntry = zis.getNextEntry()) != null) {
-            File newFile = new File(tempDir, zipEntry.getName());
+            // 获取 ZIP 条目中的路径（可能包含 ../ 或绝对路径）
+            String entryName = zipEntry.getName();
+
+            // 拼接并规范化路径
+            Path targetPath = safeDir.resolve(entryName).normalize();
+
+            log.info("Processing ZIP entry: {}, target path: {}", entryName, targetPath);
+
+            // 关键校验：确保目标路径仍在 safeDir 之下
+            if (!targetPath.startsWith(safeDir)) {
+                throw new SecurityException("检测到跨目录攻击: " + entryName);
+            }
 
             if (zipEntry.isDirectory()) {
-                fileInfoList.add(new FileInfo(newFile.getName(), "", true));  // 添加目录
+                // 创建目录（同时确保父目录存在）
+                Files.createDirectories(targetPath);
+                // 存储目录信息（使用最后一级名称，保持与原行为一致）
+                String dirName = targetPath.getFileName().toString();
+                fileInfoList.add(new FileInfo(dirName, "", true));
             } else {
-                extractFile(zis, newFile);  // 解压文件
-                fileInfoList.add(new FileInfo(newFile.getName(), readFileContent(newFile), false));  // 添加文件内容
+                // 确保父目录存在
+                Path parent = targetPath.getParent();
+                if (parent != null) {
+                    Files.createDirectories(parent);
+                }
+                // 解压文件到目标路径（使用已验证的 targetPath）
+                extractFile(zis, targetPath.toFile());
+                // 读取文件内容（同样使用已验证的路径）
+                String content = readFileContent(targetPath.toFile());
+                // 存储文件信息（使用最后一级文件名）
+                String fileName = targetPath.getFileName().toString();
+                fileInfoList.add(new FileInfo(fileName, content, false));
             }
             zis.closeEntry();
         }
@@ -273,7 +304,7 @@ public class Utils {
     }
 
     // 清理临时文件和目录
-    private static void cleanUp(File zipFile, File tempDir) {
+    static void cleanUp(File zipFile, File tempDir) {
         // 删除临时的 zip 文件
         if (zipFile.exists()) {
             if (!zipFile.delete()) {
